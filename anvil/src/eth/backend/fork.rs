@@ -26,22 +26,22 @@ use tracing::trace;
 /// This type contains a subset of the [`EthApi`](crate::eth::EthApi) functions but will exclusively
 /// fetch the requested data from the remote client, if it wasn't already fetched.
 #[derive(Debug, Clone)]
-pub struct ClientFork {
+pub struct ClientFork<M: Middleware> {
     /// Contains the cached data
     pub storage: Arc<RwLock<ForkedStorage>>,
     /// contains the info how the fork is configured
     // Wrapping this in a lock, ensures we can update this on the fly via additional custom RPC
     // endpoints
-    pub config: Arc<RwLock<ClientForkConfig>>,
+    pub config: Arc<RwLock<ClientForkConfig<M>>>,
     /// This also holds a handle to the underlying database
     pub database: Arc<AsyncRwLock<ForkedDatabase>>,
 }
 
 // === impl ClientFork ===
 
-impl ClientFork {
+impl<M: Middleware> ClientFork<M> {
     /// Creates a new instance of the fork
-    pub fn new(config: ClientForkConfig, database: Arc<AsyncRwLock<ForkedDatabase>>) -> Self {
+    pub fn new(config: ClientForkConfig<M>, database: Arc<AsyncRwLock<ForkedDatabase>>) -> Self {
         Self { storage: Default::default(), config: Arc::new(RwLock::new(config)), database }
     }
 
@@ -480,12 +480,11 @@ impl ClientFork {
 
 /// Contains all fork metadata
 #[derive(Debug, Clone)]
-pub struct ClientForkConfig {
+pub struct ClientForkConfig<M: Middleware> {
     pub eth_rpc_url: String,
     pub block_number: u64,
     pub block_hash: H256,
-    // TODO make provider agnostic
-    pub provider: Arc<RetryProvider>,
+    pub provider: M,
     pub chain_id: u64,
     pub override_chain_id: Option<u64>,
     /// The timestamp for the forked block
@@ -506,7 +505,7 @@ pub struct ClientForkConfig {
 
 // === impl ClientForkConfig ===
 
-impl ClientForkConfig {
+impl<M: Middleware> ClientForkConfig<M> {
     /// Updates the provider URL
     ///
     /// # Errors

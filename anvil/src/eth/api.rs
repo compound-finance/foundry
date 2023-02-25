@@ -1,3 +1,4 @@
+use ethers::prelude::Middleware;
 use crate::{
     eth::{
         backend,
@@ -75,12 +76,12 @@ pub const CLIENT_VERSION: &str = concat!("anvil/v", env!("CARGO_PKG_VERSION"));
 ///
 /// This type is cheap to clone and can be used concurrently
 #[derive(Clone)]
-pub struct EthApi {
+pub struct EthApi<M: Middleware> {
     /// The transaction pool
     pool: Arc<Pool>,
     /// Holds all blockchain related data
     /// In-Memory only for now
-    backend: Arc<backend::mem::Backend>,
+    backend: Arc<backend::mem::Backend<M>>,
     /// Whether this node is mining
     is_mining: bool,
     /// available signers
@@ -106,12 +107,12 @@ pub struct EthApi {
 
 // === impl Eth RPC API ===
 
-impl EthApi {
+impl<M> EthApi<M> {
     /// Creates a new instance
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         pool: Arc<Pool>,
-        backend: Arc<backend::mem::Backend>,
+        backend: Arc<backend::mem::Backend<M>>,
         signers: Arc<Vec<Box<dyn Signer>>>,
         fee_history_cache: FeeHistoryCache,
         fee_history_limit: u64,

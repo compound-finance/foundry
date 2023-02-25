@@ -1,4 +1,5 @@
 //! In memory blockchain backend
+use ethers::prelude::Middleware;
 use crate::{
     config::PruneStateHistoryConfig,
     eth::{
@@ -104,7 +105,7 @@ impl BlockRequest {
 
 /// Gives access to the [revm::Database]
 #[derive(Clone)]
-pub struct Backend {
+pub struct Backend<M: Middleware> {
     /// Access to [`revm::Database`] abstraction.
     ///
     /// This will be used in combination with [`revm::Evm`] and is responsible for feeding data to
@@ -131,7 +132,7 @@ pub struct Backend {
     /// env data of the chain
     env: Arc<RwLock<Env>>,
     /// this is set if this is currently forked off another client
-    fork: Option<ClientFork>,
+    fork: Option<ClientFork<M>>,
     /// provides time related info, like timestamp
     time: TimeManager,
     /// Contains state of custom overrides
@@ -151,7 +152,7 @@ pub struct Backend {
     transaction_block_keeper: Option<usize>,
 }
 
-impl Backend {
+impl<M: Middleware> Backend<M> {
     /// Initialises the balance of the given accounts
     #[allow(clippy::too_many_arguments)]
     pub async fn with_genesis(
@@ -159,7 +160,7 @@ impl Backend {
         env: Arc<RwLock<Env>>,
         genesis: GenesisConfig,
         fees: FeeManager,
-        fork: Option<ClientFork>,
+        fork: Option<ClientFork<M>>,
         enable_steps_tracing: bool,
         prune_state_history_config: PruneStateHistoryConfig,
         transaction_block_keeper: Option<usize>,
@@ -277,7 +278,7 @@ impl Backend {
     }
 
     /// Returns the configured fork, if any
-    pub fn get_fork(&self) -> Option<&ClientFork> {
+    pub fn get_fork(&self) -> Option<&ClientFork<M>> {
         self.fork.as_ref()
     }
 

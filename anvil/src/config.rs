@@ -724,7 +724,7 @@ impl NodeConfig {
             .expect("Failed writing json");
         }
         if self.silent {
-            return
+            return;
         }
 
         println!("{}", self.as_string(fork))
@@ -735,7 +735,7 @@ impl NodeConfig {
     /// See also [ Config::foundry_block_cache_file()]
     pub fn block_cache_path(&self) -> Option<PathBuf> {
         if self.no_storage_caching || self.eth_rpc_url.is_none() {
-            return None
+            return None;
         }
         // cache only if block explicitly set
         let block = self.fork_block_number?;
@@ -749,6 +749,33 @@ impl NodeConfig {
     ///
     /// *Note*: only memory based backend for now
     pub(crate) async fn setup(&mut self) -> mem::Backend {
+        let fork_provider = match &self.eth_rpc_url {
+            Some(eth_rpc_url) => Some(Arc::new(
+                ProviderBuilder::new(eth_rpc_url)
+                    .timeout(self.fork_request_timeout)
+                    .timeout_retry(self.fork_request_retries)
+                    .initial_backoff(self.fork_retry_backoff.as_millis() as u64)
+                    .compute_units_per_second(self.compute_units_per_second)
+                    .max_retry(10)
+                    .initial_backoff(1000)
+                    .connect()
+                    .await
+                    .expect("Failed to establish provider to fork url"),
+            )),
+            None => None,
+        };
+
+        self.setup_with_fork_provider(fork_provider).await
+    }
+
+    /// Configures everything related to env, backend and database and returns the
+    /// [Backend](mem::Backend)
+    ///
+    /// *Note*: only memory based backend for now
+    pub(crate) async fn setup_with_fork_provider<M: Middleware>(
+        &mut self,
+        fork_provider: Option<M>,
+    ) -> mem::Backend {
         // configure the revm environment
         let mut env = revm::Env {
             cfg: CfgEnv {
@@ -776,19 +803,8 @@ impl NodeConfig {
         ) =
             self.eth_rpc_url.clone()
         {
-            // TODO make provider agnostic
-            let provider = Arc::new(
-                ProviderBuilder::new(&eth_rpc_url)
-                    .timeout(self.fork_request_timeout)
-                    .timeout_retry(self.fork_request_retries)
-                    .initial_backoff(self.fork_retry_backoff.as_millis() as u64)
-                    .compute_units_per_second(self.compute_units_per_second)
-                    .max_retry(10)
-                    .initial_backoff(1000)
-                    .connect()
-                    .await
-                    .expect("Failed to establish provider to fork url"),
-            );
+            let provider =
+                fork_provider.expect("fork provider must be provided when creating fork");
 
             let (fork_block_number, fork_chain_id) =
                 if let Some(fork_block_number) = self.fork_block_number {
@@ -911,7 +927,7 @@ impl NodeConfig {
             // This will spawn the background thread that will use the provider to fetch
             // blockchain data from the other client
             let backend = SharedBackend::spawn_backend_thread(
-                Arc::clone(&provider),
+                &provider.clone(),
                 block_chain_db.clone(),
                 Some(fork_block_number.into()),
             );
@@ -1099,7 +1115,7 @@ async fn find_latest_fork_block<M: Middleware>(provider: M) -> Result<u64, M::Er
     for _ in 0..2 {
         if let Some(block) = provider.get_block(num).await? {
             if block.hash.is_some() {
-                break
+                break;
             }
         }
         // block not actually finalized, so we try the block before

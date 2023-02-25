@@ -27,11 +27,11 @@ use tracing::trace;
 /// transactions for the next block, then those transactions are handed off to the
 /// [backend](backend::mem::Backend) to construct a new block, if all transactions were successfully
 /// included in a new block they get purged from the `Pool`.
-pub struct NodeService {
+pub struct NodeService<M> {
     /// the pool that holds all transactions
     pool: Arc<Pool>,
     /// creates new blocks
-    block_producer: BlockProducer,
+    block_producer: BlockProducer<M>,
     /// the miner responsible to select transactions from the `pool´
     miner: Miner,
     /// maintenance task for fee history related tasks
@@ -42,10 +42,10 @@ pub struct NodeService {
     filter_eviction_interval: Interval,
 }
 
-impl NodeService {
+impl<M> NodeService<M> {
     pub fn new(
         pool: Arc<Pool>,
-        backend: Arc<Backend>,
+        backend: Arc<Backend<M>>,
         miner: Miner,
         fee_history: FeeHistoryService,
         filters: Filters,
@@ -63,7 +63,7 @@ impl NodeService {
     }
 }
 
-impl Future for NodeService {
+impl<M> Future for NodeService<M> {
     type Output = NodeResult<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -101,29 +101,29 @@ impl Future for NodeService {
 }
 
 // The type of the future that mines a new block
-type BlockMiningFuture =
-    Pin<Box<dyn Future<Output = (MinedBlockOutcome, Arc<Backend>)> + Send + Sync>>;
+type BlockMiningFuture<M> =
+    Pin<Box<dyn Future<Output = (MinedBlockOutcome, Arc<Backend<M>>)> + Send + Sync>>;
 
 /// A type that exclusively mines one block at a time
 #[must_use = "BlockProducer does nothing unless polled"]
-struct BlockProducer {
+struct BlockProducer<M> {
     /// Holds the backend if no block is being mined
-    idle_backend: Option<Arc<Backend>>,
+    idle_backend: Option<Arc<Backend<M>>>,
     /// Single active future that mines a new block
-    block_mining: Option<BlockMiningFuture>,
+    block_mining: Option<BlockMiningFuture<M>>,
     /// backlog of sets of transactions ready to be mined
     queued: VecDeque<Vec<Arc<PoolTransaction>>>,
 }
 
 // === impl BlockProducer ===
 
-impl BlockProducer {
-    fn new(backend: Arc<Backend>) -> Self {
+impl<M> BlockProducer<M> {
+    fn new(backend: Arc<Backend<M>>) -> Self {
         Self { idle_backend: Some(backend), block_mining: None, queued: Default::default() }
     }
 }
 
-impl Stream for BlockProducer {
+impl<M> Stream for BlockProducer<M> {
     type Item = MinedBlockOutcome;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
